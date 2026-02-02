@@ -149,5 +149,6 @@ $bgBody = '#f8f9fa';
         </div>
     </div>
 
+    <?php include 'includes/debug_footer.php'; ?>
 </body>
 </html>

@@ -109,6 +109,11 @@ if (isset($_SESSION['usuario_id'])) {
                     dataType: 'json',
                     success: function(res) {
                         btn.prop('disabled', false).text(originalText);
+                        if(res.debug_log) {
+                            console.group("🐞 PHP Debug Log");
+                            res.debug_log.forEach(log => console.log(log));
+                            console.groupEnd();
+                        }
                         
                         if (res.status === 'sucesso') {
                             $(msgId).removeClass('d-none').addClass('alert-success').text(res.msg);
@@ -122,6 +127,7 @@ if (isset($_SESSION['usuario_id'])) {
                     },
                     error: function() {
                         btn.prop('disabled', false).text(originalText);
+                        console.error("Erro Fatal:", xhr.responseText);
                         $(msgId).removeClass('d-none').addClass('alert-danger').text('Erro no servidor.');
                     }
                 });
@@ -133,5 +139,7 @@ if (isset($_SESSION['usuario_id'])) {
         enviarFormulario('#form-cadastro', '#msg-cadastro');
     });
     </script>
+    
+    <?php include 'includes/debug_footer.php'; ?>
 </body>
 </html>
