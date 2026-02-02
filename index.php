@@ -125,10 +125,29 @@ if (isset($_SESSION['usuario_id'])) {
                             $(msgId).removeClass('d-none').addClass('alert-danger').text(res.msg);
                         }
                     },
-                    error: function() {
+                    // Localize o bloco $.ajax dentro de index.php e substitua o bloco 'error' por este:
+
+                    error: function(xhr, status, error) {
+                        // Reativa o botão
                         btn.prop('disabled', false).text(originalText);
-                        console.error("Erro Fatal:", xhr.responseText);
-                        $(msgId).removeClass('d-none').addClass('alert-danger').text('Erro no servidor.');
+                        
+                        // Mostra o erro real no Console do navegador (F12)
+                        console.error("Detalhes do erro:", xhr);
+                        console.error("Resposta do servidor:", xhr.responseText);
+
+                        // Mostra mensagem na tela para o usuário
+                        let mensagemErro = 'Erro ao processar.';
+                        
+                        // Tenta capturar mensagem do JSON se o PHP tiver enviado algo antes de morrer
+                        if (xhr.responseJSON && xhr.responseJSON.msg) {
+                            mensagemErro = xhr.responseJSON.msg;
+                        } else if (xhr.status === 404) {
+                            mensagemErro = 'Arquivo de API não encontrado (404). Verifique o caminho gestor/ajax_auth.php';
+                        } else if (xhr.status === 500) {
+                            mensagemErro = 'Erro Interno do Servidor (500). Verifique o functions.php';
+                        }
+
+                        $(msgId).removeClass('d-none').addClass('alert-danger').text(mensagemErro);
                     }
                 });
             });
