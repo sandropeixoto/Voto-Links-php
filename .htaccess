@@ -1,0 +1,15 @@
+RewriteEngine On
+RewriteBase /
+
+# 1. Segurança: Bloqueia acesso a arquivos ocultos (ex: .env, .git)
+RewriteRule ^\. - [F]
+
+# 2. Exceções: Se o usuário acessar uma pasta real (ex: /gestor) ou arquivo real (index.php)
+# O servidor carrega o arquivo real e NÃO aplica a regra de reescrita abaixo.
+RewriteCond %{REQUEST_FILENAME} -f [OR]
+RewriteCond %{REQUEST_FILENAME} -d
+RewriteRule ^ - [L]
+
+# 3. Regra Mágica: Tudo que sobrar vira parâmetro "u" no p.php
+# Exemplo: links.voto.solutions/maria -> p.php?u=maria
+RewriteRule ^([a-zA-Z0-9_-]+)$ p.php?u=$1 [L,QSA]
