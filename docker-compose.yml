@@ -1,0 +1,40 @@
+version: '3.8'
+
+services:
+  # --- Container da Aplicação (PHP/Apache) ---
+  app:
+    build: .
+    container_name: voto_app
+    restart: always
+    ports:
+      - "8080:80"  # Acessar via http://localhost:8080
+    environment:
+      - DB_HOST=db
+      - DB_NAME=linktree_db
+      - DB_USER=root
+      - DB_PASS=root_password
+      - DEBUG_MODE=true # Mude para false em produção real
+    depends_on:
+      - db
+    volumes:
+      # Sincroniza a pasta atual com o container (útil para desenvolvimento)
+      # Se for publicar em produção real, remova esta linha de volume ./
+      - ./:/var/www/html
+
+  # --- Container do Banco de Dados (MySQL 8) ---
+  db:
+    image: mysql:8.0
+    container_name: voto_db
+    restart: always
+    environment:
+      MYSQL_DATABASE: linktree_db
+      MYSQL_ROOT_PASSWORD: root_password
+    volumes:
+      - db_data:/var/lib/mysql
+      # Se você tiver um arquivo .sql inicial, coloque numa pasta "db_init" 
+      # e descomente a linha abaixo para importar automaticamente na 1ª vez:
+      # - ./db_init:/docker-entrypoint-initdb.d
+    command: --default-authentication-plugin=mysql_native_password
+
+volumes:
+  db_data:
