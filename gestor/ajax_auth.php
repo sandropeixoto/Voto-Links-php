@@ -2,8 +2,8 @@
 // gestor/ajax_auth.php
 require_once '../functions.php'; 
 
-// ⚠️ IMPORTANTE: NÃO coloque verificarAutenticacao() aqui!
-// Este arquivo precisa ser acessível publicamente para quem não tem login ainda.
+// ⚠️ ATENÇÃO: NÃO coloque verificarAutenticacao() aqui.
+// O cadastro e o login precisam ser acessíveis para quem NÂO está logado.
 
 // Verifica método POST
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
@@ -29,6 +29,7 @@ if ($acao === 'login') {
     $user = $stmt->fetch();
 
     if ($user && password_verify($senha, $user['senha'])) {
+        // Sucesso: Cria Sessão
         $_SESSION['usuario_id'] = $user['id'];
         $_SESSION['usuario_nome'] = $user['nome'];
         $_SESSION['usuario_slug'] = $user['usuario'];
@@ -45,32 +46,36 @@ if ($acao === 'login') {
 if ($acao === 'cadastrar') {
     $nome = trim($_POST['nome'] ?? '');
     $email = filter_input(INPUT_POST, 'email', FILTER_VALIDATE_EMAIL);
+    // Remove caracteres especiais
     $usuario = preg_replace('/[^a-zA-Z0-9]/', '', $_POST['usuario'] ?? ''); 
     $senha = $_POST['senha'] ?? '';
 
+    // Validações básicas
     if (!$nome || !$email || !$usuario || strlen($senha) < 6) {
-        jsonResponse(false, 'Preencha corretamente. Senha min. 6 caracteres.');
+        jsonResponse(false, 'Preencha os campos corretamente. Senha min. 6 caracteres.');
     }
 
-    // --- REGRA DE NOMES PROIBIDOS ---
+    // Nomes proibidos (pastas do sistema)
     $proibidos = ['admin', 'gestor', 'api', 'login', 'dashboard', 'includes', 'assets', 'css', 'js', 'images', 'index', 'p'];
     if (in_array(strtolower($usuario), $proibidos)) {
-        jsonResponse(false, 'Este nome de usuário é reservado.');
+        jsonResponse(false, 'Este nome de usuário é reservado pelo sistema.');
     }
 
-    // Verifica duplicidade
+    // Verifica se e-mail ou usuário já existem
     $stmt = $pdo->prepare("SELECT id FROM usuarios WHERE email = ? OR usuario = ?");
     $stmt->execute([$email, $usuario]);
     if ($stmt->rowCount() > 0) {
-        jsonResponse(false, 'E-mail ou Usuário já estão em uso.');
+        jsonResponse(false, 'E-mail ou Nome de Usuário já estão em uso.');
     }
 
+    // Hash da senha
     $senhaHash = password_hash($senha, PASSWORD_DEFAULT);
 
     try {
         $stmt = $pdo->prepare("INSERT INTO usuarios (nome, email, usuario, senha) VALUES (?, ?, ?, ?)");
         $stmt->execute([$nome, $email, $usuario, $senhaHash]);
         
+        // Loga o usuário automaticamente após cadastro
         $_SESSION['usuario_id'] = $pdo->lastInsertId();
         $_SESSION['usuario_nome'] = $nome;
         $_SESSION['usuario_slug'] = $usuario;
