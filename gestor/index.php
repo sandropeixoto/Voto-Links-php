@@ -5,7 +5,20 @@ verificarAutenticacao();
 $nome = $_SESSION['usuario_nome'];
 $slug = $_SESSION['usuario_slug'];
 // URL pública para o iframe
-$urlPreview = "http://" . $_SERVER['HTTP_HOST'] . "/p.php?u=" . $slug;
+
+// --- CORREÇÃO DO PROTOCOLO (HTTP vs HTTPS) ---
+// O Cloud Run usa um Load Balancer, então $_SERVER['HTTPS'] as vezes vem vazio.
+// Precisamos verificar o cabeçalho X-Forwarded-Proto também.
+$protocol = 'http';
+if (
+    (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') || 
+    (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https')
+) {
+    $protocol = 'https';
+}
+
+$urlPreview = $protocol . "://" . $_SERVER['HTTP_HOST'] . "/p.php?u=" . $slug;
+// $urlPreview = "http://" . $_SERVER['HTTP_HOST'] . "/p.php?u=" . $slug;
 ?>
 <!DOCTYPE html>
 <html lang="pt-br">
