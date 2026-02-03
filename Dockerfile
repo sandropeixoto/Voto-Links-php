@@ -34,5 +34,8 @@ RUN echo '<Directory /var/www/html/>\n\
 </Directory>' > /etc/apache2/conf-available/custom-allow-override.conf \
     && a2enconf custom-allow-override
 
+# ... (no final do Dockerfile, antes do EXPOSE)
+RUN mkdir -p /var/www/html/uploads && chown -R www-data:www-data /var/www/html/uploads && chmod -R 775 /var/www/html/uploads
+
 # 8. Expõe a porta 8080
 EXPOSE 8080

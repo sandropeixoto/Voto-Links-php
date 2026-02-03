@@ -2,23 +2,18 @@
 require_once '../functions.php';
 verificarAutenticacao();
 
-$nome = $_SESSION['usuario_nome'];
+$usuario_id = $_SESSION['usuario_id'];
 $slug = $_SESSION['usuario_slug'];
-// URL pública para o iframe
 
-// --- CORREÇÃO DO PROTOCOLO (HTTP vs HTTPS) ---
-// O Cloud Run usa um Load Balancer, então $_SERVER['HTTPS'] as vezes vem vazio.
-// Precisamos verificar o cabeçalho X-Forwarded-Proto também.
-$protocol = 'http';
-if (
-    (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') || 
-    (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https')
-) {
-    $protocol = 'https';
-}
+// Carregar dados completos do usuário para preencher o form de aparência
+$stmt = $pdo->prepare("SELECT * FROM usuarios WHERE id = ?");
+$stmt->execute([$usuario_id]);
+$user = $stmt->fetch();
 
+// Protocolo seguro
+$protocol = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http';
+if(isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https') $protocol = 'https';
 $urlPreview = $protocol . "://" . $_SERVER['HTTP_HOST'] . "/p.php?u=" . $slug;
-// $urlPreview = "http://" . $_SERVER['HTTP_HOST'] . "/p.php?u=" . $slug;
 ?>
 <!DOCTYPE html>
 <html lang="pt-br">
@@ -26,104 +21,68 @@ $urlPreview = $protocol . "://" . $_SERVER['HTTP_HOST'] . "/p.php?u=" . $slug;
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Painel Voto Links</title>
-    
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;700&family=Merriweather:wght@300;700&family=Roboto+Mono:wght@400;700&family=Dancing+Script:wght@700&display=swap" rel="stylesheet">
 
     <style>
-        /* --- TEMA ESCURO --- */
+        /* (Mantenha o CSS Dark Mode anterior aqui) */
         body { background-color: #121212; color: #e0e0e0; font-family: 'Inter', sans-serif; }
-        
-        /* Navbar */
         .navbar { background-color: #1e1e1e; border-bottom: 1px solid #333; }
-        .navbar-brand { font-weight: 800; letter-spacing: -0.5px; }
-
-        /* Área Principal */
         .main-container { max-width: 1400px; margin: 0 auto; padding-top: 30px; }
-
-        /* Cards de Links (Editor) */
-        .link-card {
-            background-color: #1e1e1e;
-            border: 1px solid #333;
-            border-radius: 12px;
-            padding: 15px;
-            margin-bottom: 12px;
-            display: flex;
-            align-items: center;
-            transition: transform 0.2s, border-color 0.2s;
-        }
-        .link-card:hover { border-color: #555; }
-        .drag-handle { cursor: grab; color: #666; padding-right: 15px; }
-        .drag-handle:active { cursor: grabbing; }
-
-        /* Botão Adicionar Principal */
-        .btn-add-main {
-            background: linear-gradient(90deg, #8a2be2, #4b0082); /* Roxo da imagem */
-            color: white;
-            font-weight: 700;
-            border: none;
-            width: 100%;
-            padding: 15px;
-            border-radius: 50px;
-            margin-bottom: 25px;
-            font-size: 1.1rem;
-            transition: opacity 0.3s;
-        }
-        .btn-add-main:hover { opacity: 0.9; color: white; }
-
-        /* Inputs Estilizados */
-        .form-dark { background-color: #2c2c2c; border: 1px solid #444; color: #fff; }
-        .form-dark:focus { background-color: #2c2c2c; color: #fff; border-color: #8a2be2; box-shadow: none; }
-        .form-dark::placeholder { color: #888; }
-
-        /* Dropdown de Ícones */
-        .btn-icon-select {
-            background-color: #2c2c2c; border: 1px solid #444; color: #fff; width: 45px; height: 45px;
-            display: flex; align-items: center; justify-content: center; border-radius: 8px;
-        }
-        .dropdown-menu-dark { background-color: #2c2c2c; border: 1px solid #444; min-width: 250px; padding: 10px; }
-        .icon-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
-        .icon-option {
-            width: 40px; height: 40px; display: flex; align-items: center; justify-content: center;
-            border-radius: 5px; cursor: pointer; transition: background 0.2s; color: #ddd;
-        }
-        .icon-option:hover { background-color: #8a2be2; color: white; }
-
-        /* --- PREVIEW CELULAR --- */
-        .phone-mockup {
-            border: 12px solid #000;
-            border-radius: 40px;
-            height: 750px; /* Altura do celular */
-            width: 370px;  /* Largura do celular */
-            overflow: hidden;
-            position: relative;
-            background-color: #fff;
-            margin: 0 auto;
-            box-shadow: 0 0 20px rgba(0,0,0,0.5);
-        }
-        .phone-notch {
-            position: absolute; top: 0; left: 50%; transform: translateX(-50%);
-            width: 150px; height: 25px; background-color: #000;
-            border-bottom-left-radius: 12px; border-bottom-right-radius: 12px; z-index: 10;
-        }
-        .preview-iframe { width: 100%; height: 100%; border: none; }
         
-        /* Layout Colunas */
+        /* Abas de Navegação */
+        .nav-pills .nav-link { color: #aaa; border-radius: 8px; padding: 10px 20px; font-weight: 600; }
+        .nav-pills .nav-link.active { background-color: #f8f9fa; color: #121212; }
+        
+        /* Estilos do Formulario de Aparencia */
+        .card-dark { background-color: #1e1e1e; border: 1px solid #333; border-radius: 12px; padding: 20px; margin-bottom: 20px; }
+        .form-control-dark { background-color: #2c2c2c; border: 1px solid #444; color: #fff; }
+        .form-control-dark:focus { background-color: #2c2c2c; color: #fff; border-color: #8a2be2; box-shadow: none; }
+        
+        /* Seletores de Tema */
+        .theme-option { width: 100%; height: 60px; border-radius: 8px; cursor: pointer; border: 2px solid transparent; transition: all 0.2s; }
+        .theme-option.selected { border-color: #fff; transform: scale(1.05); }
+        
+        /* Tipografia */
+        .font-option { border: 1px solid #444; border-radius: 8px; padding: 15px; cursor: pointer; transition: all 0.2s; background: #2c2c2c; }
+        .font-option.selected { border-color: #8a2be2; background: #3a2a4a; }
+
+        /* Avatar Upload */
+        .avatar-preview { width: 100px; height: 100px; border-radius: 50%; object-fit: cover; border: 2px solid #8a2be2; }
+        
+        /* Celular Preview */
+        .phone-mockup { border: 12px solid #000; border-radius: 40px; height: 750px; width: 370px; overflow: hidden; position: relative; background-color: #fff; margin: 0 auto; box-shadow: 0 0 20px rgba(0,0,0,0.5); }
+        .phone-notch { position: absolute; top: 0; left: 50%; transform: translateX(-50%); width: 150px; height: 25px; background-color: #000; border-bottom-left-radius: 12px; border-bottom-right-radius: 12px; z-index: 10; }
+        .preview-iframe { width: 100%; height: 100%; border: none; }
         .col-preview { position: sticky; top: 20px; height: calc(100vh - 100px); display: flex; justify-content: center; }
         
-        @media (max-width: 992px) {
-            .phone-mockup { height: 600px; width: 300px; }
-            .col-preview { position: relative; height: auto; margin-top: 40px; }
-        }
+        /* Link Cards (CSS Anterior) */
+        .link-card { background-color: #1e1e1e; border: 1px solid #333; border-radius: 12px; padding: 15px; margin-bottom: 12px; display: flex; align-items: center; }
+        .drag-handle { cursor: grab; color: #666; padding-right: 15px; }
     </style>
 </head>
 <body>
 
-    <nav class="navbar navbar-dark">
+    <nav class="navbar navbar-dark sticky-top">
         <div class="container-fluid px-4">
             <a class="navbar-brand" href="#"><i class="fa-solid fa-bolt me-2"></i>Voto Links</a>
+            
+            <ul class="nav nav-pills mx-auto" id="mainTab" role="tablist">
+                <li class="nav-item">
+                    <button class="nav-link active" id="links-tab" data-bs-toggle="pill" data-bs-target="#tab-links" type="button">
+                        <i class="fa-solid fa-link me-2"></i>Links
+                    </button>
+                </li>
+                <li class="nav-item">
+                    <button class="nav-link" id="appearance-tab" data-bs-toggle="pill" data-bs-target="#tab-appearance" type="button">
+                        <i class="fa-solid fa-palette me-2"></i>Aparência
+                    </button>
+                </li>
+            </ul>
+
             <div class="d-flex align-items-center">
-                <span class="text-secondary me-3 d-none d-md-block">voto.sol/<?php echo $slug; ?></span>
+                <a href="<?php echo $urlPreview; ?>" target="_blank" class="btn btn-sm btn-outline-light me-3 d-md-none">Ver <i class="fa-solid fa-external-link-alt"></i></a>
                 <a href="../index.php?logout=true" class="btn btn-sm btn-outline-secondary">Sair</a>
             </div>
         </div>
@@ -132,16 +91,118 @@ $urlPreview = $protocol . "://" . $_SERVER['HTTP_HOST'] . "/p.php?u=" . $slug;
     <div class="container-fluid main-container">
         <div class="row">
             
-            <div class="col-lg-7">
-                
-                <button class="btn btn-add-main shadow" onclick="abrirModalNovo()">
-                    <i class="fa-solid fa-plus me-2"></i> Adicionar Novo Link
-                </button>
+            <div class="col-lg-7 pb-5">
+                <div class="tab-content" id="mainTabContent">
+                    
+                    <div class="tab-pane fade show active" id="tab-links">
+                        <button class="btn btn-primary w-100 py-3 rounded-pill fw-bold mb-4" onclick="abrirModalNovo()" style="background: linear-gradient(90deg, #8a2be2, #4b0082); border: none;">
+                            <i class="fa-solid fa-plus me-2"></i> Adicionar Novo Link
+                        </button>
+                        <div id="lista-links"></div> </div>
 
-                <div id="lista-links">
-                    <div class="text-center text-muted py-5">Carregando links...</div>
+                    <div class="tab-pane fade" id="tab-appearance">
+                        <form id="form-aparencia" enctype="multipart/form-data">
+                            <input type="hidden" name="acao" value="salvar_dados">
+                            
+                            <div class="card-dark">
+                                <h5 class="mb-4 text-white">Perfil</h5>
+                                <div class="d-flex align-items-center gap-4 mb-4">
+                                    <div class="position-relative">
+                                        <img src="<?php echo $user['foto'] ? '../'.$user['foto'] : 'https://via.placeholder.com/150'; ?>" class="avatar-preview" id="preview-avatar">
+                                    </div>
+                                    <div>
+                                        <button type="button" class="btn btn-sm btn-primary mb-2" onclick="document.getElementById('upload-avatar').click()">Carregar Foto</button>
+                                        <input type="file" id="upload-avatar" class="d-none" accept="image/*" onchange="uploadImagem(this, 'avatar')">
+                                        <div class="text-secondary small">Recomendado: 512x512px (JPG, PNG)</div>
+                                    </div>
+                                </div>
+
+                                <div class="mb-3">
+                                    <label class="form-label text-secondary small">Título do Perfil</label>
+                                    <input type="text" name="titulo_perfil" class="form-control form-control-dark" value="<?php echo h($user['titulo_perfil']); ?>" placeholder="@seuusuario">
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label text-secondary small">Nome de Exibição</label>
+                                    <input type="text" name="nome" class="form-control form-control-dark" value="<?php echo h($user['nome']); ?>">
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label text-secondary small">Bio</label>
+                                    <textarea name="bio" class="form-control form-control-dark" rows="3"><?php echo h($user['bio']); ?></textarea>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label text-secondary small">Celular / WhatsApp</label>
+                                    <input type="text" name="telefone" class="form-control form-control-dark" value="<?php echo h($user['telefone']); ?>">
+                                </div>
+                                
+                                <div class="form-check form-switch mt-3">
+                                    <input class="form-check-input" type="checkbox" id="btnAliado" name="exibir_botao_aliado" <?php echo $user['exibir_botao_aliado'] ? 'checked' : ''; ?>>
+                                    <label class="form-check-label text-white" for="btnAliado">Botão "Torne-se um Aliado"</label>
+                                    <div class="text-secondary small">Exibe um botão de destaque para capturar contatos.</div>
+                                </div>
+                            </div>
+
+                            <div class="card-dark">
+                                <h5 class="mb-3 text-white">Tipografia</h5>
+                                <div class="row g-2">
+                                    <div class="col-4">
+                                        <div class="font-option <?php echo $user['estilo_fonte']=='sans'?'selected':''; ?>" onclick="selectFont('sans', this)">
+                                            <div class="fw-bold fs-5" style="font-family: 'Inter', sans-serif;">Aa</div>
+                                            <div class="small text-secondary">Moderno</div>
+                                        </div>
+                                    </div>
+                                    <div class="col-4">
+                                        <div class="font-option <?php echo $user['estilo_fonte']=='serif'?'selected':''; ?>" onclick="selectFont('serif', this)">
+                                            <div class="fw-bold fs-5" style="font-family: 'Merriweather', serif;">Aa</div>
+                                            <div class="small text-secondary">Clássico</div>
+                                        </div>
+                                    </div>
+                                    <div class="col-4">
+                                        <div class="font-option <?php echo $user['estilo_fonte']=='mono'?'selected':''; ?>" onclick="selectFont('mono', this)">
+                                            <div class="fw-bold fs-5" style="font-family: 'Roboto Mono', monospace;">Aa</div>
+                                            <div class="small text-secondary">Técnico</div>
+                                        </div>
+                                    </div>
+                                    <input type="hidden" name="estilo_fonte" id="input_fonte" value="<?php echo h($user['estilo_fonte']); ?>">
+                                </div>
+                            </div>
+
+                            <div class="card-dark">
+                                <h5 class="mb-3 text-white">Tema da Página</h5>
+                                <input type="hidden" name="tipo_fundo" id="tipo_fundo" value="<?php echo h($user['tipo_fundo']); ?>">
+                                <input type="hidden" name="cor_fundo" id="cor_fundo" value="<?php echo h($user['cor_fundo']); ?>">
+
+                                <div class="row g-3 mb-3">
+                                    <div class="col-3"><div class="theme-option" style="background:#121212" onclick="selectTheme('cor', '#121212', this)"></div></div>
+                                    <div class="col-3"><div class="theme-option" style="background:#ffffff" onclick="selectTheme('cor', '#ffffff', this)"></div></div>
+                                    <div class="col-3"><div class="theme-option" style="background:#2ecc71" onclick="selectTheme('cor', '#2ecc71', this)"></div></div>
+                                    <div class="col-3"><div class="theme-option" style="background:#3498db" onclick="selectTheme('cor', '#3498db', this)"></div></div>
+                                    
+                                    <div class="col-3"><div class="theme-option" style="background: linear-gradient(45deg, #8a2be2, #4b0082)" onclick="selectTheme('cor', 'linear-gradient(45deg, #8a2be2, #4b0082)', this)"></div></div>
+                                    <div class="col-3"><div class="theme-option" style="background: linear-gradient(to right, #ff416c, #ff4b2b)" onclick="selectTheme('cor', 'linear-gradient(to right, #ff416c, #ff4b2b)', this)"></div></div>
+                                    <div class="col-3"><div class="theme-option" style="background: linear-gradient(to top, #09203f 0%, #537895 100%)" onclick="selectTheme('cor', 'linear-gradient(to top, #09203f 0%, #537895 100%)', this)"></div></div>
+                                    <div class="col-3"><div class="theme-option" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%)" onclick="selectTheme('cor', 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', this)"></div></div>
+                                </div>
+
+                                <div class="border-top border-secondary pt-3 mt-3">
+                                    <label class="form-label text-white mb-2">Ou imagem personalizada:</label>
+                                    <div class="d-flex align-items-center gap-3">
+                                        <button type="button" class="btn btn-outline-light btn-sm" onclick="document.getElementById('upload-bg').click()">Enviar Fundo</button>
+                                        <input type="file" id="upload-bg" class="d-none" accept="image/*" onchange="uploadImagem(this, 'fundo')">
+                                        <?php if($user['tipo_fundo'] == 'imagem'): ?>
+                                            <span class="badge bg-success" id="bg-status">Imagem ativa</span>
+                                        <?php endif; ?>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="d-grid">
+                                <button type="submit" class="btn btn-success py-3 fw-bold fs-5">Salvar Personalização</button>
+                            </div>
+
+                        </form>
+                    </div>
+
                 </div>
-
             </div>
 
             <div class="col-lg-5 col-preview">
@@ -154,194 +215,88 @@ $urlPreview = $protocol . "://" . $_SERVER['HTTP_HOST'] . "/p.php?u=" . $slug;
         </div>
     </div>
 
-    <div class="modal fade" id="modalLink" tabindex="-1">
-        <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content" style="background-color: #1e1e1e; border: 1px solid #333;">
-                <div class="modal-header border-bottom-0">
-                    <h5 class="modal-title text-white" id="modalTitulo">Link</h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body">
-                    <form id="form-link">
-                        <input type="hidden" name="acao" value="salvar">
-                        <input type="hidden" name="id" id="link_id">
-
-                        <div class="mb-3">
-                            <label class="form-label text-secondary small">Ícone</label>
-                            <div class="dropdown">
-                                <button class="btn btn-icon-select w-100 justify-content-start px-3" type="button" data-bs-toggle="dropdown">
-                                    <i id="preview-icon-btn" class="fa-solid fa-link me-2"></i> 
-                                    <span id="label-icon-btn" class="text-muted">Selecionar Ícone...</span>
-                                </button>
-                                <input type="hidden" name="icone" id="icone_input" value="">
-                                
-                                <div class="dropdown-menu dropdown-menu-dark p-2">
-                                    <div class="icon-grid">
-                                        <div class="icon-option" onclick="selectIcon('fa-brands fa-whatsapp')"><i class="fa-brands fa-whatsapp"></i></div>
-                                        <div class="icon-option" onclick="selectIcon('fa-brands fa-instagram')"><i class="fa-brands fa-instagram"></i></div>
-                                        <div class="icon-option" onclick="selectIcon('fa-brands fa-linkedin')"><i class="fa-brands fa-linkedin"></i></div>
-                                        <div class="icon-option" onclick="selectIcon('fa-brands fa-github')"><i class="fa-brands fa-github"></i></div>
-                                        <div class="icon-option" onclick="selectIcon('fa-brands fa-youtube')"><i class="fa-brands fa-youtube"></i></div>
-                                        <div class="icon-option" onclick="selectIcon('fa-brands fa-tiktok')"><i class="fa-brands fa-tiktok"></i></div>
-                                        <div class="icon-option" onclick="selectIcon('fa-brands fa-twitter')"><i class="fa-brands fa-twitter"></i></div>
-                                        <div class="icon-option" onclick="selectIcon('fa-brands fa-facebook')"><i class="fa-brands fa-facebook"></i></div>
-                                        <div class="icon-option" onclick="selectIcon('fa-solid fa-globe')"><i class="fa-solid fa-globe"></i></div>
-                                        <div class="icon-option" onclick="selectIcon('fa-solid fa-envelope')"><i class="fa-solid fa-envelope"></i></div>
-                                        <div class="icon-option" onclick="selectIcon('fa-solid fa-phone')"><i class="fa-solid fa-phone"></i></div>
-                                        <div class="icon-option" onclick="selectIcon('fa-solid fa-location-dot')"><i class="fa-solid fa-location-dot"></i></div>
-                                        <div class="icon-option" onclick="selectIcon('fa-solid fa-star')"><i class="fa-solid fa-star"></i></div>
-                                        <div class="icon-option" onclick="selectIcon('fa-solid fa-store')"><i class="fa-solid fa-store"></i></div>
-                                        <div class="icon-option" onclick="selectIcon('')"><i class="fa-solid fa-ban"></i></div> </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="mb-3">
-                            <label class="form-label text-secondary small">Título</label>
-                            <input type="text" name="titulo" id="titulo" class="form-control form-dark" placeholder="Ex: Meu Site Oficial" required>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label text-secondary small">URL</label>
-                            <input type="text" name="url" id="url" class="form-control form-dark" placeholder="https://..." required>
-                        </div>
-                        
-                        <div class="d-grid mt-4">
-                            <button type="submit" class="btn btn-primary rounded-pill py-2 fw-bold">Salvar Alterações</button>
-                        </div>
-                    </form>
-                </div>
-            </div>
-        </div>
-    </div>
-
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
-
+    
     <script>
-    $(document).ready(function() {
-        carregarLinks();
+        // Scripts da Aba Aparência
+        
+        // 1. Upload de Imagens (Avatar/Bg)
+        function uploadImagem(input, tipo) {
+            if (input.files && input.files[0]) {
+                let formData = new FormData();
+                formData.append('arquivo', input.files[0]);
+                formData.append('acao', 'upload_imagem');
+                formData.append('tipo_upload', tipo);
 
-        // Salvar Link
-        $('#form-link').on('submit', function(e) {
+                // Feedback visual
+                let btn = $(input).prev();
+                let txtOriginal = btn.text();
+                btn.text('Enviando...').prop('disabled', true);
+
+                $.ajax({
+                    url: 'ajax_perfil.php',
+                    type: 'POST',
+                    data: formData,
+                    contentType: false,
+                    processData: false,
+                    dataType: 'json',
+                    success: function(res) {
+                        btn.text(txtOriginal).prop('disabled', false);
+                        if (res.status === 'sucesso') {
+                            if(tipo === 'avatar') {
+                                $('#preview-avatar').attr('src', res.dados.url);
+                            } else {
+                                alert('Fundo carregado! Clique em Salvar para aplicar.');
+                                selectTheme('imagem', '', null); // Marca como imagem
+                            }
+                            atualizarPreview();
+                        } else {
+                            alert(res.msg);
+                        }
+                    }
+                });
+            }
+        }
+
+        // 2. Seleção de Fonte
+        function selectFont(font, el) {
+            $('.font-option').removeClass('selected');
+            $(el).addClass('selected');
+            $('#input_fonte').val(font);
+        }
+
+        // 3. Seleção de Tema
+        function selectTheme(tipo, valor, el) {
+            $('.theme-option').removeClass('selected');
+            if(el) $(el).addClass('selected');
+            
+            $('#tipo_fundo').val(tipo);
+            if(tipo === 'cor') $('#cor_fundo').val(valor);
+        }
+
+        // 4. Salvar Dados Gerais
+        $('#form-aparencia').on('submit', function(e) {
             e.preventDefault();
-            $.post('ajax_links.php', $(this).serialize(), function(res) {
+            let btn = $(this).find('button[type="submit"]');
+            btn.prop('disabled', true).text('Salvando...');
+
+            $.post('ajax_perfil.php', $(this).serialize(), function(res) {
+                btn.prop('disabled', false).text('Salvar Personalização');
                 if(res.status === 'sucesso') {
-                    $('#modalLink').modal('hide');
-                    carregarLinks(); // Recarrega lista
-                    atualizarPreview(); // Atualiza iframe
+                    atualizarPreview();
                 } else {
                     alert(res.msg);
                 }
             }, 'json');
         });
-    });
 
-    // Função para atualizar o Iframe sem piscar muito
-    function atualizarPreview() {
-        document.getElementById('iframePreview').src = document.getElementById('iframePreview').src;
-    }
-
-    // Selecionador de Ícone Customizado
-    function selectIcon(iconClass) {
-        $('#icone_input').val(iconClass);
-        if(iconClass) {
-            $('#preview-icon-btn').attr('class', iconClass + ' me-2');
-            $('#label-icon-btn').text(iconClass.replace('fa-brands fa-', '').replace('fa-solid fa-', ''));
-        } else {
-            $('#preview-icon-btn').attr('class', 'fa-solid fa-link me-2');
-            $('#label-icon-btn').text('Sem ícone');
+        function atualizarPreview() {
+            document.getElementById('iframePreview').src = document.getElementById('iframePreview').src;
         }
-    }
-
-    function abrirModalNovo() {
-        $('#form-link')[0].reset();
-        $('#link_id').val('');
-        selectIcon(''); 
-        $('#modalTitulo').text('Criar Novo Link');
-        new bootstrap.Modal(document.getElementById('modalLink')).show();
-    }
-
-    function editarLink(id, titulo, url, icone) {
-        $('#link_id').val(id);
-        $('#titulo').val(titulo);
-        $('#url').val(url);
-        selectIcon(icone);
-        $('#modalTitulo').text('Editar Link');
-        new bootstrap.Modal(document.getElementById('modalLink')).show();
-    }
-
-    function excluirLink(id) {
-        if(confirm('Excluir este link?')) {
-            $.post('ajax_links.php', { acao: 'excluir', id: id }, function(res) {
-                carregarLinks();
-                atualizarPreview();
-            }, 'json');
-        }
-    }
-
-    function toggleAtivo(id, btn) {
-        let novoStatus = $(btn).find('i').hasClass('fa-eye') ? 0 : 1;
-        $.post('ajax_links.php', { acao: 'toggle_ativo', id: id, ativo: novoStatus }, function() {
-            carregarLinks();
-            atualizarPreview();
-        }, 'json');
-    }
-
-    function carregarLinks() {
-        $.get('ajax_links.php?acao=listar', function(res) {
-            let html = '';
-            if(res.dados.length > 0) {
-                res.dados.forEach(function(link) {
-                    let icone = link.icone ? `<i class="${link.icone}"></i>` : `<i class="fa-solid fa-link"></i>`;
-                    let eyeIcon = link.ativo == 1 ? 'fa-eye' : 'fa-eye-slash text-muted';
-                    let opacity = link.ativo == 1 ? '1' : '0.5';
-
-                    html += `
-                    <div class="link-card" data-id="${link.id}" style="opacity: ${opacity}">
-                        <div class="drag-handle"><i class="fa-solid fa-grip-vertical"></i></div>
-                        
-                        <div class="me-3 d-flex align-items-center justify-content-center" style="width: 40px; height: 40px; background: #2c2c2c; border-radius: 50%;">
-                            ${icone}
-                        </div>
-
-                        <div class="flex-grow-1 overflow-hidden">
-                            <div class="fw-bold text-white text-truncate">${link.titulo}</div>
-                            <div class="small text-secondary text-truncate">${link.url}</div>
-                        </div>
-
-                        <div class="d-flex gap-2 ms-2">
-                            <button class="btn btn-sm btn-outline-secondary border-0" onclick="toggleAtivo(${link.id}, this)">
-                                <i class="fa-regular ${eyeIcon}"></i>
-                            </button>
-                            <button class="btn btn-sm btn-outline-secondary border-0" onclick="editarLink(${link.id}, '${link.titulo}', '${link.url}', '${link.icone}')">
-                                <i class="fa-solid fa-pen"></i>
-                            </button>
-                            <button class="btn btn-sm btn-outline-danger border-0" onclick="excluirLink(${link.id})">
-                                <i class="fa-solid fa-trash"></i>
-                            </button>
-                        </div>
-                    </div>`;
-                });
-            } else {
-                html = '<div class="text-center text-secondary mt-5"><i class="fa-solid fa-ghost fs-1 mb-3"></i><br>Nenhum link criado ainda.</div>';
-            }
-            $('#lista-links').html(html);
-
-            // Drag & Drop
-            new Sortable(document.getElementById('lista-links'), {
-                handle: '.drag-handle',
-                animation: 150,
-                onEnd: function () {
-                    var ordem = [];
-                    $('#lista-links .link-card').each(function() { ordem.push($(this).data('id')); });
-                    $.post('ajax_links.php', { acao: 'reordenar', ordem: ordem }, function() {
-                        atualizarPreview();
-                    });
-                }
-            });
-        }, 'json');
-    }
+        
+        // Carrega links ao iniciar (se estiver na aba links)
+        // ... (seu carregarLinks() anterior)
     </script>
 </body>
 </html>

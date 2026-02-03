@@ -1,94 +1,64 @@
 <?php
 require_once 'functions.php';
-
 $slug = $_GET['u'] ?? '';
-if (!$slug) { header('Location: index.php'); exit; }
-
-// Busca perfil
-$stmt = $pdo->prepare("SELECT id, nome, bio, foto FROM usuarios WHERE usuario = ? LIMIT 1");
+// ... (buscas no banco) ...
+$stmt = $pdo->prepare("SELECT * FROM usuarios WHERE usuario = ? LIMIT 1");
 $stmt->execute([$slug]);
 $perfil = $stmt->fetch();
+// ... (busca links) ...
 
-if (!$perfil) {
-    http_response_code(404);
-    die("<h1>Usuário não encontrado</h1>");
+// Lógica de CSS Dinâmico
+$fonteCSS = "font-family: 'Inter', sans-serif;"; // Padrão
+if ($perfil['estilo_fonte'] === 'serif') $fonteCSS = "font-family: 'Merriweather', serif;";
+if ($perfil['estilo_fonte'] === 'mono')  $fonteCSS = "font-family: 'Roboto Mono', monospace;";
+if ($perfil['estilo_fonte'] === 'cursive') $fonteCSS = "font-family: 'Dancing Script', cursive;";
+
+// Lógica de Fundo
+$bgCSS = "background-color: #121212;";
+if ($perfil['tipo_fundo'] === 'cor') {
+    $bgCSS = "background: " . $perfil['cor_fundo'] . ";";
+} elseif ($perfil['tipo_fundo'] === 'imagem' && $perfil['imagem_fundo']) {
+    $bgCSS = "background: url('" . $perfil['imagem_fundo'] . "') no-repeat center center fixed; background-size: cover;";
 }
 
-// Busca Links (já ordenados)
-$stmtLinks = $pdo->prepare("SELECT titulo, url, icone FROM links WHERE usuario_id = ? AND ativo = 1 ORDER BY ordem ASC, id DESC");
-$stmtLinks->execute([$perfil['id']]);
-$links = $stmtLinks->fetchAll();
-
-$bgBody = '#f8f9fa'; 
+$textoCor = ($perfil['tipo_fundo'] === 'cor' && $perfil['cor_fundo'] === '#ffffff') ? '#121212' : '#ffffff';
 ?>
 <!DOCTYPE html>
 <html lang="pt-br">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title><?php echo h($perfil['nome']); ?> | Voto Links</title>
-    
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
-
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;700&family=Merriweather:wght@300;700&family=Roboto+Mono:wght@400;700&family=Dancing+Script:wght@700&display=swap" rel="stylesheet">
     <style>
         body {
-            background-color: <?php echo $bgBody; ?>;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            <?php echo $bgCSS; ?>
+            <?php echo $fonteCSS; ?>
+            color: <?php echo $textoCor; ?>;
             min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            padding-top: 50px;
+            /* ... flex layout ... */
         }
-        .profile-container { width: 100%; max-width: 680px; padding: 20px; text-align: center; }
-        .avatar { width: 96px; height: 96px; border-radius: 50%; object-fit: cover; margin-bottom: 15px; border: 2px solid #ddd; }
-        .link-btn {
-            display: block; width: 100%;
-            background-color: #fff; color: #333;
-            border: 1px solid #ddd;
-            padding: 18px 20px; margin-bottom: 16px;
-            border-radius: 50px; text-decoration: none;
-            font-weight: 600;
-            transition: all 0.2s;
-            position: relative;
+        .btn-aliado {
+            background-color: #fff; color: #000; font-weight: bold;
+            text-transform: uppercase; letter-spacing: 1px;
+            animation: pulse 2s infinite;
         }
-        .link-btn:hover { transform: scale(1.02); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
-        .btn-icon { position: absolute; left: 20px; top: 50%; transform: translateY(-50%); font-size: 1.2rem; }
+        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.02); } 100% { transform: scale(1); } }
+        /* ... restante do CSS ... */
     </style>
 </head>
 <body>
-
     <div class="profile-container">
-        <?php if (!empty($perfil['foto'])): ?>
-            <img src="<?php echo h($perfil['foto']); ?>" class="avatar">
-        <?php else: ?>
-            <div class="avatar d-flex align-items-center justify-content-center bg-secondary text-white mx-auto fs-2">
-                <?php echo strtoupper(substr($perfil['nome'], 0, 1)); ?>
+        <img src="<?php echo $perfil['foto'] ? $perfil['foto'] : 'default_avatar.png'; ?>" class="avatar">
+        
+        <h1 class="h4 fw-bold mt-3"><?php echo h($perfil['titulo_perfil'] ?: '@'.$slug); ?></h1>
+        <p class="small opacity-75"><?php echo h($perfil['bio']); ?></p>
+
+        <?php if ($perfil['exibir_botao_aliado']): ?>
+            <div class="mt-4">
+                <a href="#" class="link-btn btn-aliado">
+                    <i class="fa-solid fa-handshake me-2"></i> Torne-se um Aliado
+                </a>
+                <div class="small mt-2 opacity-50">Junte-se a nossa comunidade</div>
             </div>
         <?php endif; ?>
-
-        <h1 class="h4 fw-bold">@<?php echo h($slug); ?></h1>
-        <?php if (!empty($perfil['bio'])): ?>
-            <p class="text-muted"><?php echo h($perfil['bio']); ?></p>
-        <?php endif; ?>
-
-        <div class="mt-4">
-            <?php foreach ($links as $link): ?>
-                <a href="<?php echo h($link['url']); ?>" target="_blank" class="link-btn">
-                    <?php if(!empty($link['icone'])): ?>
-                        <i class="<?php echo h($link['icone']); ?> btn-icon"></i>
-                    <?php endif; ?>
-                    
-                    <?php echo h($link['titulo']); ?>
-                </a>
-            <?php endforeach; ?>
-        </div>
-        
-        <div class="mt-5 text-muted small">
-            Voto Solutions Linktree
-        </div>
     </div>
-    <?php include 'includes/debug_footer.php'; ?>
 </body>
 </html>
