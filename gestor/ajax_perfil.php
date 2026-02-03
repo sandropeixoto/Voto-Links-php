@@ -2,12 +2,14 @@
 require_once '../functions.php';
 verificarAutenticacao();
 
+// Aumenta limite de memória para processar imagens
+ini_set('memory_limit', '256M');
+
 $acao = $_POST['acao'] ?? '';
 $usuario_id = $_SESSION['usuario_id'];
-$usuario_slug = $_SESSION['usuario_slug'];
 
 // ============================================================================
-// 1. SALVAR DADOS DE TEXTO E OPÇÕES
+// 1. SALVAR DADOS DE TEXTO
 // ============================================================================
 if ($acao === 'salvar_dados') {
     $titulo_perfil = trim($_POST['titulo_perfil'] ?? '');
@@ -16,9 +18,8 @@ if ($acao === 'salvar_dados') {
     $telefone      = trim($_POST['telefone'] ?? '');
     $exibir_aliado = isset($_POST['exibir_botao_aliado']) ? 1 : 0;
     
-    // Aparência
     $estilo_fonte  = $_POST['estilo_fonte'] ?? 'sans';
-    $tipo_fundo    = $_POST['tipo_fundo'] ?? 'cor'; // 'cor' ou 'imagem'
+    $tipo_fundo    = $_POST['tipo_fundo'] ?? 'cor';
     $cor_fundo     = $_POST['cor_fundo'] ?? '#121212';
 
     try {
@@ -32,93 +33,79 @@ if ($acao === 'salvar_dados') {
             $estilo_fonte, $tipo_fundo, $cor_fundo, 
             $usuario_id
         ]);
-
-        // Atualiza sessão se mudou o nome
+        
         $_SESSION['usuario_nome'] = $nome;
-
-        jsonResponse(true, 'Perfil atualizado com sucesso!');
+        jsonResponse(true, 'Perfil salvo!');
     } catch (PDOException $e) {
         jsonResponse(false, 'Erro ao salvar: ' . $e->getMessage());
     }
 }
 
 // ============================================================================
-// 2. UPLOAD DE IMAGEM (AVATAR OU FUNDO)
+// 2. UPLOAD DE IMAGEM (BASE64 NO BANCO)
 // ============================================================================
 if ($acao === 'upload_imagem') {
     $tipo = $_POST['tipo_upload'] ?? 'avatar'; // 'avatar' ou 'fundo'
     
     if (!isset($_FILES['arquivo']) || $_FILES['arquivo']['error'] !== UPLOAD_ERR_OK) {
-        jsonResponse(false, 'Nenhum arquivo enviado ou erro no upload.');
+        jsonResponse(false, 'Erro no envio do arquivo.');
     }
 
     $file = $_FILES['arquivo'];
     $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
-    $allowed = ['jpg', 'jpeg', 'png', 'webp'];
-
-    // Validações
-    if (!in_array($ext, $allowed)) {
-        jsonResponse(false, 'Formato inválido. Use JPG, PNG ou WebP.');
-    }
-    if ($file['size'] > 5 * 1024 * 1024) { // 5MB
-        jsonResponse(false, 'Arquivo muito grande. Máximo 5MB.');
+    
+    if (!in_array($ext, ['jpg', 'jpeg', 'png', 'webp'])) {
+        jsonResponse(false, 'Apenas JPG, PNG ou WebP.');
     }
 
-    // Nome Único: slug_tipo_random.ext
-    $novoNome = $usuario_slug . '_' . $tipo . '_' . uniqid() . '.' . $ext;
-    $caminhoRelativo = 'uploads/' . $novoNome;
-    $caminhoAbsoluto = __DIR__ . '/../' . $caminhoRelativo;
+    // Processa e converte para Base64
+    $base64Image = converterImagemBase64($file['tmp_name'], $tipo, $ext);
 
-    // Processamento da Imagem (Redimensionar e Cortar)
-    if (processarImagem($file['tmp_name'], $caminhoAbsoluto, $tipo, $ext)) {
-        // Salva caminho no banco
+    if ($base64Image) {
+        // Salva a string gigante no banco
         $coluna = ($tipo === 'avatar') ? 'foto' : 'imagem_fundo';
         
-        // Remove imagem antiga se existir (opcional, para limpar lixo)
-        // ... (lógica de limpeza pode ser adicionada aqui)
-
-        $stmt = $pdo->prepare("UPDATE usuarios SET $coluna = ? WHERE id = ?");
-        $stmt->execute([$caminhoRelativo, $usuario_id]);
-
-        jsonResponse(true, 'Imagem atualizada!', ['url' => '../' . $caminhoRelativo]);
+        try {
+            $stmt = $pdo->prepare("UPDATE usuarios SET $coluna = ? WHERE id = ?");
+            $stmt->execute([$base64Image, $usuario_id]);
+            
+            jsonResponse(true, 'Imagem salva!', ['url' => $base64Image]);
+        } catch (PDOException $e) {
+            jsonResponse(false, 'Erro de banco (Imagem muito grande?): ' . $e->getMessage());
+        }
     } else {
-        jsonResponse(false, 'Erro ao processar imagem.');
+        jsonResponse(false, 'Falha ao processar imagem.');
     }
 }
 
 /**
- * Função Auxiliar para Redimensionar Imagens usando GD
+ * Redimensiona e retorna string Base64 pronta para o <img src="">
  */
-function processarImagem($origem, $destino, $tipo, $ext) {
+function converterImagemBase64($origem, $tipo, $ext) {
     list($largura, $altura) = getimagesize($origem);
     
-    // Cria imagem da fonte
+    // Cria recurso de imagem
     if ($ext == 'png') $img = imagecreatefrompng($origem);
     elseif ($ext == 'webp') $img = imagecreatefromwebp($origem);
     else $img = imagecreatefromjpeg($origem);
 
     if (!$img) return false;
 
-    // Definições de tamanho alvo
+    // Definições de Redimensionamento
     if ($tipo === 'avatar') {
-        $novaLargura = 512;
-        $novaAltura = 512;
-        // Lógica de corte quadrado (Crop)
+        // Quadrado 400x400 (Otimizado)
+        $novaLargura = 400; $novaAltura = 400;
         $menorLado = min($largura, $altura);
         $x = ($largura - $menorLado) / 2;
         $y = ($altura - $menorLado) / 2;
         
         $novaImg = imagecreatetruecolor($novaLargura, $novaAltura);
-        
-        // Preserva transparência PNG/WebP
         imagealphablending($novaImg, false);
         imagesavealpha($novaImg, true);
-
         imagecopyresampled($novaImg, $img, 0, 0, $x, $y, $novaLargura, $novaAltura, $menorLado, $menorLado);
-
     } else {
-        // Background (Apenas redimensiona se for gigante, mas mantém proporção)
-        $maxLargura = 1920;
+        // Background - Max 1024px largura (Otimizado para não estourar o banco)
+        $maxLargura = 1024;
         if ($largura > $maxLargura) {
             $ratio = $maxLargura / $largura;
             $novaLargura = $maxLargura;
@@ -127,17 +114,21 @@ function processarImagem($origem, $destino, $tipo, $ext) {
             $novaLargura = $largura;
             $novaAltura = $altura;
         }
-
         $novaImg = imagecreatetruecolor($novaLargura, $novaAltura);
         imagecopyresampled($novaImg, $img, 0, 0, 0, 0, $novaLargura, $novaAltura, $largura, $altura);
     }
 
-    // Salva no destino
-    if ($ext == 'png') imagepng($novaImg, $destino, 8);
-    elseif ($ext == 'webp') imagewebp($novaImg, $destino, 90);
-    else imagejpeg($novaImg, $destino, 90);
+    // Buffer de Saída para capturar os bytes da imagem
+    ob_start();
+    // Salva como JPEG qualidade 80 (bom balanço tamanho/qualidade) ou PNG se precisar transparência
+    if ($ext == 'png') imagepng($novaImg); 
+    else imagejpeg($novaImg, null, 80); 
+    $imageData = ob_get_clean();
 
     imagedestroy($img);
     imagedestroy($novaImg);
-    return true;
+
+    // Retorna formato Data URI
+    $mime = ($ext == 'png') ? 'image/png' : 'image/jpeg';
+    return 'data:' . $mime . ';base64,' . base64_encode($imageData);
 }
