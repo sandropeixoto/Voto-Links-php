@@ -1,7 +1,7 @@
-# Usa a imagem oficial do PHP com Apache
+# Usa a imagem oficial do PHP 8.2 com Apache
 FROM php:8.2-apache
 
-# Instala extensões necessárias e utilitários
+# 1. Instala dependências do sistema e extensões PHP
 RUN apt-get update && apt-get install -y \
     libzip-dev \
     zip \
@@ -9,33 +9,30 @@ RUN apt-get update && apt-get install -y \
     && docker-php-ext-install pdo pdo_mysql zip \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Ativa o mod_rewrite do Apache
+# 2. Ativa o mod_rewrite do Apache (Para o .htaccess funcionar)
 RUN a2enmod rewrite
 
-# --- CORREÇÃO DO ERRO DO CLOUD RUN ---
-# O Cloud Run usa a porta 8080. O Apache padrão usa 80.
-# Este comando altera as configurações do Apache para escutar na 8080.
+# 3. Configura o Apache para usar a porta 8080 (Exigência do Cloud Run)
 RUN sed -i 's/80/8080/g' /etc/apache2/sites-available/000-default.conf /etc/apache2/ports.conf
 
-# Define o diretório de trabalho
+# 4. Define o diretório de trabalho
 WORKDIR /var/www/html
 
-# Copia os arquivos do projeto
+# 5. Copia os arquivos do projeto
 COPY . /var/www/html/
 
-# Ajusta permissões
+# 6. Ajusta permissões (Fundamental para o Apache ler/gravar)
 RUN chown -R www-data:www-data /var/www/html \
     && chmod -R 755 /var/www/html
 
-# Configurações do Apache para ler .htaccess corretamente
-ENV APACHE_DOCUMENT_ROOT /var/www/html
-RUN sed -ri -e 's!/var/www/html!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/sites-available/*.conf
-RUN sed -ri -e 's!/var/www/!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/apache2.conf /etc/apache2/conf-available/*.conf
+# 7. CORREÇÃO DO ERRO: Habilita .htaccess SEM quebrar o PHP
+# Criamos um arquivo de configuração NOVO em vez de sobrescrever o padrão
 RUN echo '<Directory /var/www/html/>\n\
     Options Indexes FollowSymLinks\n\
     AllowOverride All\n\
     Require all granted\n\
-</Directory>' > /etc/apache2/conf-available/docker-php.conf
+</Directory>' > /etc/apache2/conf-available/custom-allow-override.conf \
+    && a2enconf custom-allow-override
 
-# Expõe a porta 8080 (Padrão Cloud Run)
+# 8. Expõe a porta 8080
 EXPOSE 8080
